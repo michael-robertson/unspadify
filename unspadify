@@ -1,0 +1,95 @@
+#!/bin/bash
+
+# Put this in /usr/local/bin or ~/bin, and run with "init" to set up.
+# Or "unspadify init verbose" to make it chatty.
+
+PLIST=$HOME/Library/LaunchAgents/unspadify.plist
+
+if [ "$1" = "remove" ]
+then
+  echo "Unloading and removing file .."
+  launchctl unload $PLIST
+  mv -f -v $PLIST /tmp
+  exit 0
+fi
+
+if [ "$1" = "init" ]
+then
+  if [ -f "$PLIST" ]
+  then
+    echo "Old version found, moving ..."
+    launchctl unload $PLIST
+    mv -f -v $PLIST /tmp
+  fi
+  cat > $PLIST <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>unspadify</string>
+    <key>ProgramArguments</key>
+    <array>
+$(
+  echo "        <string>$0</string>"
+  [ "$2" = "verbose" ] && echo "        <string>verbose</string>"
+)
+    </array>
+    <key>WatchPaths</key>
+    <array>
+$(
+  find "$HOME/Library/Application Support/Spotify/Users" -name ad-state-storage.bnk | \
+  while read ADFILE
+  do echo "        <string>$ADFILE</string>"
+  done
+)
+    </array>
+</dict>
+</plist>
+EOF
+  launchctl load $PLIST
+  echo 'unspadify loaded, hit "OK" when prompted for permission'
+  exit 0
+fi
+
+function unspadify_app() {
+  osascript -e "tell application \"Spotify\"
+    $1
+  end tell"
+}
+
+function unspadify_track() {
+  unspadify_app "set c to the current track
+    set x to the $1 of c as text"
+}
+
+function mute() {
+  osascript -e "set volume output muted $1"
+}
+
+{
+  [ "$1" = "verbose" ] && echo "$(date): [$0] [$1]"
+  if unspadify_app 'player state' | grep -q 'playing'
+  then
+    IS_MUTED=$(osascript -e 'output muted of (get volume settings)')
+    # the files change like 3 seconds before the switch - it's weird, so we gotta shotgun this
+    for attempt in $(seq 10)
+    do
+      if unspadify_track 'id' | grep -q ':ad:'
+      then IS_AD='true'
+      else IS_AD='false'
+      fi
+      if [ "$IS_AD" != "$IS_MUTED" ]
+      then
+        [ "$1" = "verbose" ] && echo "muting $IS_AD on cycle $attempt"
+        mute $IS_AD
+        break # end the for loop
+      fi
+      sleep 0.5
+    done
+  fi
+} >> /tmp/unspadify.log 2>&1
+
+# TODO: arg parsing to functions, add "run" as command
+# TODO: log better
+
