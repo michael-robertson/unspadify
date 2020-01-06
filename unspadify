@@ -1,13 +1,19 @@
 #!/bin/bash
 
 # Put this in /usr/local/bin or ~/bin, and run "unspadify install" to set up.
-# Or "unspadify install verbose" for debugging.
+# Or "unspadify install /tmp/unspadify.log" for debugging.
 
 PLIST=$HOME/Library/LaunchAgents/unspadify.plist
+LOGFILE="$2"
 
 function _usage() {
-  echo "Usage: $0 [install|uninstall|run] <verbose>"
+  echo "Usage: $0 <install|uninstall|run> [logfilename]"
   exit 1
+}
+
+function _log() {
+  [ "$LOGFILE" ] || return
+  echo "$(date): $*" >> $LOGFILE
 }
 
 function _uninstall() {
@@ -28,19 +34,13 @@ function _install() {
     <string>unspadify</string>
     <key>ProgramArguments</key>
     <array>
-$(
-  for ARG in $0 run $*
-  do echo "        <string>$ARG</string>"
-  done
-)
+$( for ARG in $0 run $LOGFILE; do echo "        <string>$ARG</string>"; done)
     </array>
     <key>WatchPaths</key>
     <array>
 $(
   find "$HOME/Library/Application Support/Spotify/Users" -name ad-state-storage.bnk | \
-  while read ADFILE
-  do echo "        <string>$ADFILE</string>"
-  done
+    while read ADFILE; do echo "        <string>$ADFILE</string>"; done
 )
     </array>
 </dict>
@@ -61,26 +61,19 @@ function _get_track() {
     set x to the $1 of c as text"
 }
 
-function _mute() {
-  osascript -e "set volume output muted $1"
-}
-
 function _run() {
-  [ "$1" = "verbose" ] && echo "$(date): checking player state" >> /tmp/unspadify.log
+  _log "checking player state"
   if _tell_app 'player state' | grep -q 'playing'
   then
     IS_MUTED=$(osascript -e 'output muted of (get volume settings)')
     # the files change like 3 seconds before the switch, do multiple checks
     for ATTEMPT in $(seq 12)
     do
-      if _get_track 'id' | grep -q ':ad:'
-      then IS_AD='true'
-      else IS_AD='false'
-      fi
+      IS_AD=$(_get_track 'id' | grep -q ':ad:' && echo true || echo false)
       if [ "$IS_AD" != "$IS_MUTED" ]
       then
-        [ "$1" = "verbose" ] && echo "muting $IS_AD on cycle $ATTEMPT" >> /tmp/unspadify.log
-        _mute $IS_AD
+        _log "muting $IS_AD on cycle $ATTEMPT"
+        osascript -e "set volume output muted $IS_AD"
         break # end the for loop
       fi
       sleep 0.5
@@ -88,12 +81,10 @@ function _run() {
   fi
 }
 
-ACTION=$1
-shift
-case "$ACTION" in
-  i*) _install $* ;;
+case "$1" in
+  i*) _install ;;
   u*) _uninstall ;;
-  r*) _run $* ;;
+  r*) _run ;;
   *)  _usage ;;
 esac
 
