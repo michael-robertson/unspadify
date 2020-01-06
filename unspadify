@@ -5,6 +5,7 @@
 
 PLIST=$HOME/Library/LaunchAgents/unspadify.plist
 LOGFILE="$2"
+APPLICATION=$(echo U3BvdGlmeQo= | base64 --decode) # obfuscation
 
 function _usage() {
   echo "Usage: $0 <install|uninstall|run> [logfilename]"
@@ -39,7 +40,7 @@ $( for ARG in $0 run $LOGFILE; do echo "        <string>$ARG</string>"; done)
     <key>WatchPaths</key>
     <array>
 $(
-  find "$HOME/Library/Application Support/Spotify/Users" -name ad-state-storage.bnk | \
+  find "$HOME/Library/Application Support/$APPLICATION/Users" -name ad-state-storage.bnk | \
     while read ADFILE; do echo "        <string>$ADFILE</string>"; done
 )
     </array>
@@ -51,7 +52,7 @@ EOF
 }
 
 function _tell_app() {
-  osascript -e "tell application \"Spotify\"
+  osascript -e "tell application \"$APPLICATION\"
     $1
   end tell"
 }
