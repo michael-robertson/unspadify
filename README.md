@@ -1,4 +1,3 @@
 # unspadify
 
-**TODO** - put stuff here
-
+This script serves a specific function. I find it quite useful.
